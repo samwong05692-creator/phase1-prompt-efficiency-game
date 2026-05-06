@@ -5,17 +5,77 @@ import os
 import random
 
 # =====================================================
-# PHASE 1 PROMPT EFFICIENCY GAME
+# PrompTᵒZip Prompt Efficiency Game
 # Version: 1000 Random Challenge Bank
 # =====================================================
 
 LEADERBOARD_FILE = "leaderboard.csv"
 CHALLENGE_BANK_FILE = "challenge_bank_1000.csv"
 
+LEADERBOARD_COLUMNS = [
+    "timestamp",
+    "participant_id",
+    "player_name",
+    "challenge_id",
+    "category",
+    "difficulty",
+    "original_prompt",
+    "player_prompt",
+    "original_tokens",
+    "player_tokens",
+    "token_saving_percent",
+    "accuracy_score",
+    "final_score",
+    "badge",
+    "evaluation_reason"
+]
+
+
+# =====================================================
+# 0. LEADERBOARD FUNCTIONS
+# =====================================================
+
+@st.cache_data(ttl=3)
+def load_leaderboard():
+    if os.path.exists(LEADERBOARD_FILE):
+        df = pd.read_csv(LEADERBOARD_FILE)
+
+        numeric_columns = [
+            "original_tokens",
+            "player_tokens",
+            "token_saving_percent",
+            "accuracy_score",
+            "final_score"
+        ]
+
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        return df
+    else:
+        return pd.DataFrame(columns=LEADERBOARD_COLUMNS)
+
+
+def save_attempt(row):
+    file_exists = os.path.exists(LEADERBOARD_FILE)
+
+    df_row = pd.DataFrame([row])
+
+    df_row.to_csv(
+        LEADERBOARD_FILE,
+        mode="a",
+        header=not file_exists,
+        index=False
+    )
+
+    load_leaderboard.clear()
+
 
 # =====================================================
 # 1. BASIC TOKEN COUNTER
 # =====================================================
+
 def count_tokens(text):
     """
     Simple prototype token counter.
@@ -30,16 +90,8 @@ def count_tokens(text):
 # =====================================================
 # 2. CHALLENGE BANK GENERATOR
 # =====================================================
+
 def generate_challenge_bank(total_questions=1000, seed=42):
-    """
-    Generates 1000 prompt compression game questions.
-    Each challenge includes:
-    - original_prompt
-    - expected_meaning
-    - meaning_groups used by the auto evaluator
-    - category
-    - difficulty
-    """
     random.seed(seed)
 
     scenarios = [
@@ -298,7 +350,10 @@ def generate_challenge_bank(total_questions=1000, seed=42):
             f"The tone should be {scenario['tone']}. {requirements_text} {constraint}"
         )
 
-        expected_meaning = "The compressed prompt should still include: " + "; ".join(scenario["requirements"])
+        expected_meaning = (
+            "The compressed prompt should still include: "
+            + "; ".join(scenario["requirements"])
+        )
 
         challenge_id = f"Q{i:04d}"
 
@@ -317,11 +372,8 @@ def generate_challenge_bank(total_questions=1000, seed=42):
 # =====================================================
 # 3. AUTOMATIC MEANING CHECKER
 # =====================================================
+
 def auto_meaning_score(player_prompt, meaning_groups):
-    """
-    Rule-based checker.
-    It checks whether the compressed prompt still contains the key meanings.
-    """
     text = player_prompt.lower().strip()
 
     if not text:
@@ -340,6 +392,7 @@ def auto_meaning_score(player_prompt, meaning_groups):
 
     vowels = sum(1 for c in text if c in "aeiou")
     letters = sum(1 for c in text if c.isalpha())
+
     if letters > 10 and vowels / max(letters, 1) < 0.15:
         return 0, "Likely gibberish or unreadable text"
 
@@ -365,6 +418,7 @@ def auto_meaning_score(player_prompt, meaning_groups):
 # =====================================================
 # 4. SCORE CALCULATION
 # =====================================================
+
 def calculate_token_saving(original_tokens, player_tokens):
     if original_tokens == 0:
         return 0
@@ -396,8 +450,10 @@ def get_badge(final_score):
 # =====================================================
 # 5. EXPORT CHALLENGE BANK
 # =====================================================
+
 def save_challenge_bank_to_csv(challenges):
     export_rows = []
+
     for c in challenges:
         export_rows.append({
             "challenge_id": c["challenge_id"],
@@ -406,30 +462,52 @@ def save_challenge_bank_to_csv(challenges):
             "original_prompt": c["original_prompt"],
             "expected_meaning": c["expected_meaning"]
         })
+
     df = pd.DataFrame(export_rows)
     df.to_csv(CHALLENGE_BANK_FILE, index=False)
+
     return df
 
 
 # =====================================================
 # 6. STREAMLIT PAGE SETUP
 # =====================================================
+
 st.set_page_config(
-    page_title="Prompt Efficiency Challenge",
+    page_title="PrompTᵒZip Prompt Efficiency Game",
     page_icon="🎮",
     layout="wide"
 )
 
-st.title("🎮 Prompt Efficiency Challenge")
+st.title("🎮 PrompTᵒZip Prompt Efficiency Game")
 st.write(
-    "Phase 1 game prototype with 1000 random challenge questions. "
-    "Players compress long prompts while preserving meaning."
+    "Phase 1 prototype with 1000 random challenge questions. "
+    "Players compress long prompts while preserving the meaning. "
+    "The system records token saving, meaning accuracy and leaderboard score."
 )
 
 
 # =====================================================
-# 7. LOAD OR GENERATE CHALLENGES
+# 7. PARTICIPANT ID
 # =====================================================
+
+st.subheader("Participant Information")
+
+if "participant_id" not in st.session_state:
+    st.session_state.participant_id = f"A1-MY-{random.randint(100000, 999999)}"
+
+participant_id = st.text_input(
+    "Participant ID",
+    value=st.session_state.participant_id
+)
+
+st.session_state.participant_id = participant_id
+
+
+# =====================================================
+# 8. LOAD OR GENERATE CHALLENGES
+# =====================================================
+
 if "challenges" not in st.session_state:
     st.session_state.challenges = generate_challenge_bank(total_questions=1000, seed=42)
 
@@ -438,13 +516,14 @@ if "current_challenge" not in st.session_state:
 
 
 # =====================================================
-# 8. SIDEBAR CONTROLS
+# 9. SIDEBAR CONTROLS
 # =====================================================
+
 st.sidebar.header("Game Controls")
 
 player_name = st.sidebar.text_input(
-    "Player Name",
-    placeholder="Enter your name or nickname"
+    "Player Name / Nickname",
+    placeholder="Optional"
 )
 
 categories = sorted(list(set(c["category"] for c in st.session_state.challenges)))
@@ -471,13 +550,18 @@ challenge_ids = [c["challenge_id"] for c in st.session_state.challenges]
 selected_challenge_id = st.sidebar.selectbox("Or select Challenge ID", challenge_ids)
 
 if st.sidebar.button("Load Selected Challenge"):
-    selected = [c for c in st.session_state.challenges if c["challenge_id"] == selected_challenge_id]
+    selected = [
+        c for c in st.session_state.challenges
+        if c["challenge_id"] == selected_challenge_id
+    ]
+
     if selected:
         st.session_state.current_challenge = selected[0]
 
 st.sidebar.divider()
 
 challenge_bank_df = save_challenge_bank_to_csv(st.session_state.challenges)
+
 st.sidebar.download_button(
     label="Download 1000 Question Bank CSV",
     data=challenge_bank_df.to_csv(index=False).encode("utf-8"),
@@ -487,8 +571,9 @@ st.sidebar.download_button(
 
 
 # =====================================================
-# 9. CURRENT CHALLENGE DISPLAY
+# 10. CURRENT CHALLENGE DISPLAY
 # =====================================================
+
 challenge = st.session_state.current_challenge
 original_prompt = challenge["original_prompt"]
 original_tokens = count_tokens(original_prompt)
@@ -510,8 +595,9 @@ with right_col:
 
 
 # =====================================================
-# 10. PLAYER INPUT
+# 11. PLAYER INPUT
 # =====================================================
+
 st.subheader("Your Compressed Prompt")
 
 player_prompt = st.text_area(
@@ -522,19 +608,30 @@ player_prompt = st.text_area(
 
 
 # =====================================================
-# 11. SCORE CALCULATION
+# 12. SCORE CALCULATION + ACTION #3 SAVE ATTEMPT
 # =====================================================
+
 if st.button("Calculate Score", type="primary"):
     if not player_prompt.strip():
         st.warning("Please enter your compressed prompt first.")
     else:
         player_tokens = count_tokens(player_prompt)
-        token_saving = calculate_token_saving(original_tokens, player_tokens)
+
+        token_saving = calculate_token_saving(
+            original_tokens,
+            player_tokens
+        )
+
         accuracy_score, evaluation_reason = auto_meaning_score(
             player_prompt,
             challenge["meaning_groups"]
         )
-        final_score = calculate_final_score(accuracy_score, token_saving)
+
+        final_score = calculate_final_score(
+            accuracy_score,
+            token_saving
+        )
+
         badge = get_badge(final_score)
 
         st.subheader("Result")
@@ -575,47 +672,52 @@ if st.button("Calculate Score", type="primary"):
                 "Good attempt. The prompt is shorter and the main meaning is still preserved."
             )
 
-        result = {
-            "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        # =====================================================
+        # ACTION #3: SAVE EACH SUBMITTED ANSWER INTO LEADERBOARD
+        # =====================================================
+
+        attempt_row = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "participant_id": participant_id,
             "player_name": player_name if player_name.strip() else "Anonymous",
             "challenge_id": challenge["challenge_id"],
             "category": challenge["category"],
             "difficulty": challenge["difficulty"],
+            "original_prompt": original_prompt,
+            "player_prompt": player_prompt,
             "original_tokens": original_tokens,
             "player_tokens": player_tokens,
             "token_saving_percent": round(token_saving, 2),
             "accuracy_score": accuracy_score,
             "final_score": round(final_score, 2),
             "badge": badge,
-            "evaluation_reason": evaluation_reason,
-            "original_prompt": original_prompt,
-            "player_prompt": player_prompt
+            "evaluation_reason": evaluation_reason
         }
 
-        if os.path.exists(LEADERBOARD_FILE):
-            leaderboard = pd.read_csv(LEADERBOARD_FILE)
-            leaderboard = pd.concat(
-                [leaderboard, pd.DataFrame([result])],
-                ignore_index=True
-            )
-        else:
-            leaderboard = pd.DataFrame([result])
+        save_attempt(attempt_row)
 
-        leaderboard.to_csv(LEADERBOARD_FILE, index=False)
         st.info("Result saved to leaderboard.")
 
 
 # =====================================================
-# 12. LEADERBOARD DISPLAY
+# 13. ACTION #4: LEADERBOARD DISPLAY FOR ALL PARTICIPANTS
 # =====================================================
+
 st.subheader("Leaderboard")
 
-if os.path.exists(LEADERBOARD_FILE):
-    leaderboard = pd.read_csv(LEADERBOARD_FILE)
-    leaderboard = leaderboard.sort_values(by="final_score", ascending=False)
+leaderboard = load_leaderboard()
+
+if leaderboard.empty:
+    st.write("No results yet.")
+else:
+    leaderboard = leaderboard.sort_values(
+        by="final_score",
+        ascending=False
+    )
 
     display_columns = [
-        "datetime",
+        "timestamp",
+        "participant_id",
         "player_name",
         "challenge_id",
         "category",
@@ -628,23 +730,34 @@ if os.path.exists(LEADERBOARD_FILE):
         "badge"
     ]
 
+    available_display_columns = [
+        col for col in display_columns
+        if col in leaderboard.columns
+    ]
+
     st.dataframe(
-        leaderboard[display_columns],
+        leaderboard[available_display_columns],
         use_container_width=True
     )
 
     with st.expander("View submitted prompts and evaluation reasons"):
+        detailed_columns = [
+            "participant_id",
+            "player_name",
+            "challenge_id",
+            "original_prompt",
+            "player_prompt",
+            "evaluation_reason",
+            "final_score"
+        ]
+
+        available_detailed_columns = [
+            col for col in detailed_columns
+            if col in leaderboard.columns
+        ]
+
         st.dataframe(
-            leaderboard[
-                [
-                    "player_name",
-                    "challenge_id",
-                    "original_prompt",
-                    "player_prompt",
-                    "evaluation_reason",
-                    "final_score"
-                ]
-            ],
+            leaderboard[available_detailed_columns],
             use_container_width=True
         )
 
@@ -654,14 +767,14 @@ if os.path.exists(LEADERBOARD_FILE):
         file_name="leaderboard.csv",
         mime="text/csv"
     )
-else:
-    st.write("No results yet.")
 
 
 # =====================================================
-# 13. PROTOTYPE NOTE
+# 14. PROTOTYPE NOTE
 # =====================================================
+
 st.caption(
     "Prototype note: This version creates 1000 random text-based challenges using templates. "
-    "The meaning checker is rule-based. In the next version, it can be upgraded with an AI evaluator model."
+    "The meaning checker is rule-based. In the next version, it can be upgraded with an AI evaluator model. "
+    "For public deployment, the leaderboard should later be moved from CSV storage to Supabase, Firebase, or AWS database."
 )
